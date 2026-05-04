@@ -1,0 +1,57 @@
+version: "3.9"
+# INHERITANCE CHOIR — Go Gin Enterprise Stack
+services:
+
+  # ── Go Gin API (single ~10MB binary) ─────────────────────
+  api:
+    build: .
+    container_name: choir_go_api
+    ports: ["8080:8080"]
+    environment:
+      - MONGODB_URI=mongodb://mongo:27017
+      - REDIS_URL=redis://redis:6379/0
+      - ENVIRONMENT=production
+      - JWT_SECRET=change-this-in-production-at-least-32-chars!
+    env_file: [.env]
+    depends_on:
+      mongo: { condition: service_healthy }
+      redis: { condition: service_started }
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 128M   # Go uses ~15-50MB — far less than Python/Node
+          cpus: '1.0'
+
+  # ── MongoDB ───────────────────────────────────────────────
+  mongo:
+    image: mongo:7.0
+    container_name: choir_go_mongo
+    ports: ["27019:27017"]   # 27019 avoids conflict with other stacks
+    volumes: [mongo_data:/data/db]
+    healthcheck:
+      test: ["CMD","mongosh","--eval","db.adminCommand('ping')"]
+      interval: 10s; timeout: 5s; retries: 5
+    restart: unless-stopped
+
+  # ── Redis ─────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: choir_go_redis
+    ports: ["6381:6379"]    # avoids conflict
+    restart: unless-stopped
+
+  # ── Mongo Express (DB UI) ─────────────────────────────────
+  mongo-express:
+    image: mongo-express:latest
+    container_name: choir_go_mongoexpress
+    ports: ["8083:8081"]
+    environment:
+      - ME_CONFIG_MONGODB_SERVER=mongo
+      - ME_CONFIG_BASICAUTH_USERNAME=admin
+      - ME_CONFIG_BASICAUTH_PASSWORD=choir123
+    depends_on: [mongo]
+    restart: unless-stopped
+
+volumes:
+  mongo_data:
