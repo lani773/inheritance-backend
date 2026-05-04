@@ -16,33 +16,36 @@ import (
 	"github.com/inheritance-choir/backend/internal/models"
 	"github.com/inheritance-choir/backend/internal/notifications"
 	"github.com/inheritance-choir/backend/internal/repository"
+	"github.com/inheritance-choir/backend/internal/services"
 	"github.com/inheritance-choir/backend/internal/workers"
 )
 
 // Scheduler wraps robfig/cron with our domain jobs.
 type Scheduler struct {
-	cron   *cron.Cron
-	db     *repository.DB
-	pool   *workers.Pool
-	mailer *notifications.Mailer
-	cfg    *config.Config
-	log    *zap.Logger
+	cron    *cron.Cron
+	db      *repository.DB
+	pool    *workers.Pool
+	mailer  *notifications.Mailer
+	cfg     *config.Config
+	autoSvc *services.AutomationService
+	log     *zap.Logger
 }
 
 // New creates and starts the Scheduler. Call Stop() on shutdown.
-func New(db *repository.DB, pool *workers.Pool, mailer *notifications.Mailer, cfg *config.Config, log *zap.Logger) *Scheduler {
+func New(db *repository.DB, pool *workers.Pool, mailer *notifications.Mailer, cfg *config.Config, autoSvc *services.AutomationService, log *zap.Logger) *Scheduler {
 	loc, err := time.LoadLocation(cfg.Timezone)
 	if err != nil {
 		loc = time.UTC
 	}
 
 	s := &Scheduler{
-		cron:   cron.New(cron.WithLocation(loc), cron.WithSeconds()),
-		db:     db,
-		pool:   pool,
-		mailer: mailer,
-		cfg:    cfg,
-		log:    log,
+		cron:    cron.New(cron.WithLocation(loc), cron.WithSeconds()),
+		db:      db,
+		pool:    pool,
+		mailer:  mailer,
+		cfg:     cfg,
+		autoSvc: autoSvc,
+		log:     log,
 	}
 	s.registerJobs()
 	return s
@@ -142,6 +145,18 @@ func (s *Scheduler) registerJobs() {
 			Name:    "welcome-sequences",
 			Retries: 0,
 			Handler: s.welcomeSequences,
+		})
+	})
+
+	// Run all active user-defined automation rules — every 30 minutes
+	s.cron.AddFunc("0 */30 * * * *", func() {
+		s.pool.Submit(workers.Task{
+			Name:    "run-active-automations",
+			Retries: 0,
+			Handler: func(ctx context.Context, _ interface{}) error {
+				s.autoSvc.RunAllActive(ctx)
+				return nil
+			},
 		})
 	})
 }

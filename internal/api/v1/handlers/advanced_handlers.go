@@ -22,6 +22,7 @@ import (
 	"github.com/inheritance-choir/backend/internal/models"
 	"github.com/inheritance-choir/backend/internal/realtime"
 	"github.com/inheritance-choir/backend/internal/repository"
+	"github.com/inheritance-choir/backend/internal/services"
 )
 
 type SearchHandler struct {
@@ -44,9 +45,10 @@ type PledgeHandler struct {
 	log *zap.Logger
 }
 type AutomationHandler struct {
-	db  *repository.DB
-	hub *realtime.Hub
-	log *zap.Logger
+	db      *repository.DB
+	hub     *realtime.Hub
+	autoSvc *services.AutomationService
+	log     *zap.Logger
 }
 type APIKeyHandler struct {
 	db  *repository.DB
@@ -88,8 +90,8 @@ func NewBudgetHandler(db *repository.DB, hub *realtime.Hub, log *zap.Logger) *Bu
 func NewPledgeHandler(db *repository.DB, hub *realtime.Hub, log *zap.Logger) *PledgeHandler {
 	return &PledgeHandler{db, hub, log}
 }
-func NewAutomationHandler(db *repository.DB, hub *realtime.Hub, log *zap.Logger) *AutomationHandler {
-	return &AutomationHandler{db, hub, log}
+func NewAutomationHandler(db *repository.DB, hub *realtime.Hub, autoSvc *services.AutomationService, log *zap.Logger) *AutomationHandler {
+	return &AutomationHandler{db, hub, autoSvc, log}
 }
 func NewAPIKeyHandler(db *repository.DB, log *zap.Logger) *APIKeyHandler {
 	return &APIKeyHandler{db, log}
@@ -187,7 +189,7 @@ func (h *SetlistHandler) Create(c *gin.Context) {
 		return
 	}
 	item.ID = res.InsertedID.(primitive.ObjectID)
-	h.hub.Publish("setlist:updated", item)
+	h.hub.Publish("setlist:updated", realtime.ChGeneral, item)
 	sendCreated(c, item, "Setlist saved")
 }
 
@@ -215,7 +217,7 @@ func (h *SetlistHandler) Update(c *gin.Context) {
 	h.db.Setlists().UpdateByID(c.Request.Context(), oid, bson.M{"$set": body})
 	var item models.Setlist
 	h.db.Setlists().FindOne(c.Request.Context(), bson.M{"_id": oid}).Decode(&item)
-	h.hub.Publish("setlist:updated", item)
+	h.hub.Publish("setlist:updated", realtime.ChGeneral, item)
 	sendSuccess(c, item, "Setlist updated")
 }
 
@@ -225,7 +227,7 @@ func (h *SetlistHandler) Delete(c *gin.Context) {
 		return
 	}
 	h.db.Setlists().DeleteOne(c.Request.Context(), bson.M{"_id": oid})
-	h.hub.Publish("setlist:deleted", gin.H{"id": oid.Hex()})
+	h.hub.Publish("setlist:deleted", realtime.ChGeneral, gin.H{"id": oid.Hex()})
 	c.Status(http.StatusNoContent)
 }
 
@@ -256,7 +258,7 @@ func (h *BudgetHandler) Upsert(c *gin.Context) {
 	goal.UpdatedAt = now
 	update := bson.M{"$set": bson.M{"target": goal.Target, "updatedAt": now}, "$setOnInsert": bson.M{"year": goal.Year, "type": goal.Type, "createdBy": goal.CreatedBy, "createdAt": now}}
 	h.db.BudgetGoals().UpdateOne(c.Request.Context(), bson.M{"year": goal.Year, "type": goal.Type}, update, options.Update().SetUpsert(true))
-	h.hub.Publish("budget:updated", goal)
+	h.hub.Publish("budget:updated", realtime.ChFinance, goal)
 	sendSuccess(c, goal, "Budget goal saved")
 }
 
@@ -282,7 +284,7 @@ func (h *PledgeHandler) CreateCampaign(c *gin.Context) {
 	item.UpdatedAt = now
 	res, _ := h.db.PledgeCampaigns().InsertOne(c.Request.Context(), item)
 	item.ID = res.InsertedID.(primitive.ObjectID)
-	h.hub.Publish("pledge:campaign:new", item)
+	h.hub.Publish("pledge:campaign:new", realtime.ChFinance, item)
 	sendCreated(c, item, "Campaign created")
 }
 
@@ -326,7 +328,7 @@ func (h *PledgeHandler) CreatePledge(c *gin.Context) {
 	item.UpdatedAt = now
 	res, _ := h.db.Pledges().InsertOne(c.Request.Context(), item)
 	item.ID = res.InsertedID.(primitive.ObjectID)
-	h.hub.Publish("pledge:new", item)
+	h.hub.Publish("pledge:new", realtime.ChFinance, item)
 	sendCreated(c, item, "Pledge saved")
 }
 
@@ -360,7 +362,7 @@ func (h *AutomationHandler) Create(c *gin.Context) {
 	item.UpdatedAt = now
 	res, _ := h.db.AutomationRules().InsertOne(c.Request.Context(), item)
 	item.ID = res.InsertedID.(primitive.ObjectID)
-	h.hub.Publish("automation:updated", item)
+	h.hub.Publish("automation:updated", realtime.ChAdmin, item)
 	sendCreated(c, item, "Automation rule created")
 }
 
@@ -390,10 +392,18 @@ func (h *AutomationHandler) Run(c *gin.Context) {
 	if !ok {
 		return
 	}
-	now := time.Now()
-	h.db.AutomationRules().UpdateByID(c.Request.Context(), oid, bson.M{"$inc": bson.M{"runCount": 1}, "$set": bson.M{"lastRun": now, "updatedAt": now}})
-	h.hub.Publish("automation:run", gin.H{"id": oid.Hex(), "lastRun": now})
-	sendSuccess(c, nil, "Automation queued")
+	var rule models.AutomationRule
+	if err := h.db.AutomationRules().FindOne(c.Request.Context(), bson.M{"_id": oid}).Decode(&rule); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "Rule not found"})
+		return
+	}
+	result, err := h.autoSvc.RunRule(c.Request.Context(), &rule)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": err.Error()})
+		return
+	}
+	h.hub.Publish(realtime.EvtAutomationRun, realtime.ChAdmin, gin.H{"id": oid.Hex(), "result": result, "ranAt": time.Now()})
+	sendSuccess(c, gin.H{"result": result, "ranAt": time.Now()}, "Automation executed")
 }
 
 func (h *APIKeyHandler) List(c *gin.Context) {
@@ -498,7 +508,7 @@ func (h *UploadHandler) Create(c *gin.Context) {
 	asset := models.UploadAsset{FileName: req.FileName, ContentType: req.ContentType, Size: req.Size, URL: req.DataURL, Scope: req.Scope, OwnerID: currentID(c), CreatedAt: now}
 	res, _ := h.db.UploadAssets().InsertOne(c.Request.Context(), asset)
 	asset.ID = res.InsertedID.(primitive.ObjectID)
-	h.hub.Publish("upload:new", asset)
+	h.hub.Publish("upload:new", realtime.ChGeneral, asset)
 	sendCreated(c, asset, "Upload recorded")
 }
 
@@ -544,7 +554,7 @@ func (h *PrayerHandler) Create(c *gin.Context) {
 	item.UpdatedAt = now
 	res, _ := h.db.PrayerRequests().InsertOne(c.Request.Context(), item)
 	item.ID = res.InsertedID.(primitive.ObjectID)
-	h.hub.Publish("prayer:new", item)
+	h.hub.Publish("prayer:new", realtime.ChPrayer, item)
 	sendCreated(c, item, "Prayer request created")
 }
 
@@ -599,7 +609,7 @@ func (h *ChatHandler) Send(c *gin.Context) {
 	}
 	res, _ := h.db.ChatMessages().InsertOne(c.Request.Context(), msg)
 	msg.ID = res.InsertedID.(primitive.ObjectID)
-	h.hub.Publish("chat:message", msg)
+	h.hub.Publish("chat:message", msg.ChannelID, msg)
 	sendCreated(c, msg, "Message sent")
 }
 

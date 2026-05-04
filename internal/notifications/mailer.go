@@ -42,17 +42,25 @@ func (m *Mailer) send(to, subject, htmlBody string) {
 		)
 		return
 	}
+
 	msg := gomail.NewMessage()
 	msg.SetAddressHeader("From", m.from, m.name)
 	msg.SetHeader("To", to)
 	msg.SetHeader("Subject", subject)
 	msg.SetBody("text/html", htmlBody)
 
-	if err := m.dialer.DialAndSend(msg); err != nil {
-		m.log.Error("Email send failed", zap.String("to", to), zap.Error(err))
-	} else {
-		m.log.Info("Email sent", zap.String("to", to), zap.String("subject", subject))
+	// Retry loop for transient network errors (up to 3 attempts)
+	var err error
+	for i := 0; i < 3; i++ {
+		if err = m.dialer.DialAndSend(msg); err == nil {
+			m.log.Info("Email sent", zap.String("to", to), zap.String("subject", subject), zap.Int("attempt", i+1))
+			return
+		}
+		m.log.Warn("Email attempt failed", zap.Int("attempt", i+1), zap.Error(err))
+		time.Sleep(time.Duration(i+1) * time.Second)
 	}
+
+	m.log.Error("Email send failed after retries", zap.String("to", to), zap.Error(err))
 }
 
 // Gold-themed base HTML template
@@ -237,3 +245,9 @@ func firstWord(s string) string {
 	}
 	return s
 }
+
+// SendGeneric sends a fully custom email with any subject and HTML body.
+func (m *Mailer) SendGeneric(to, fullName, subject, bodyHTML string) {
+	m.send(to, subject, m.render(subject, bodyHTML))
+}
+

@@ -84,13 +84,14 @@ func main() {
 	// ── Services ───────────────────────────────────────────
 	authSvc := services.NewAuthService(db, cfg, jwtMgr, mailer, log)
 	hub := realtime.NewHub(log)
+	autoSvc := services.NewAutomationService(db, mailer, log)
 
 	// ── Scheduler (automation) ─────────────────────────────
-	sched := scheduler.New(db, pool, mailer, cfg, log)
+	sched := scheduler.New(db, pool, mailer, cfg, autoSvc, log)
 	sched.Start()
 
 	// ── HTTP server ────────────────────────────────────────
-	r := router.Setup(cfg, db, log, jwtMgr, authSvc, mailer, hub)
+	r := router.Setup(cfg, db, log, jwtMgr, authSvc, mailer, hub, autoSvc)
 
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,

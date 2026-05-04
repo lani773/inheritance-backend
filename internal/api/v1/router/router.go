@@ -30,6 +30,7 @@ func Setup(
 	authSvc *services.AuthService,
 	mailer *notifications.Mailer,
 	hub *realtime.Hub,
+	autoSvc *services.AutomationService,
 ) *gin.Engine {
 
 	if cfg.IsProduction() {
@@ -94,7 +95,7 @@ func Setup(
 	setlistH := handlers.NewSetlistHandler(db, hub, log)
 	budgetH := handlers.NewBudgetHandler(db, hub, log)
 	pledgeH := handlers.NewPledgeHandler(db, hub, log)
-	autoH := handlers.NewAutomationHandler(db, hub, log)
+	autoH := handlers.NewAutomationHandler(db, hub, autoSvc, log)
 	apiKeyH := handlers.NewAPIKeyHandler(db, log)
 	webhookH := handlers.NewWebhookHandler(db, log)
 	uploadH := handlers.NewUploadHandler(db, hub, log)
