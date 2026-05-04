@@ -1,0 +1,8 @@
+service:
+  name: inheritance-backend
+  type: web
+  build:
+    command: go build -tags netgo -ldflags "-s -w" -o app ./cmd/server
+  run:
+    command: ./app
+    port: 8080
