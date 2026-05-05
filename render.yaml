@@ -1,0 +1,34 @@
+services:
+  backend:
+    type: web
+    env: go
+    plan: standard
+    buildCommand: go build -o app main.go
+    startCommand: ./app
+    envVars:
+      - key: DATABASE_URL
+        value: secret://MONGODB_CONNECTION_STRING
+      - key: API_KEY
+        value: secret://YOUR_API_KEY
+    healthCheck:
+      path: /health
+      initialDelay: 30
+      interval: 10
+      timeout: 5
+      healthyThreshold: 2
+      unhealthyThreshold: 3
+
+  mongo:
+    type: readonly
+    plan: dedicated
+    env: mongo
+    envVars:
+      - key: MONGO_URI
+        value: secret://MONGODB_ATLAS_URI
+    healthCheck:
+      path: /health
+      initialDelay: 30
+      interval: 10
+      timeout: 5
+      healthyThreshold: 2
+      unhealthyThreshold: 3
