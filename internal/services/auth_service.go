@@ -1,5 +1,6 @@
 // Package services contains all business logic for the Inheritance Choir system.
 package services
+import "go.mongodb.org/mongo-driver/v2/bson"
 
 import (
 	"context"
@@ -9,9 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/bson/primitive"
-	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.uber.org/zap"
 
 	"github.com/inheritance-choir/backend/internal/config"
@@ -154,7 +153,7 @@ func (s *AuthService) Register(ctx context.Context, data RegisterInput) (*models
 		IsAdmin:      false,
 		Permissions:  []string{},
 		Attendance:   0,
-		ContribTotal: 0,
+		ContributionTotal: 0,
 		JoinDate:     now,
 		CreatedAt:    now,
 		UpdatedAt:    now,
@@ -164,7 +163,7 @@ func (s *AuthService) Register(ctx context.Context, data RegisterInput) (*models
 	if err != nil {
 		return nil, err
 	}
-	member.ID = res.InsertedID.(primitive.ObjectID)
+	member.ID = res.InsertedID.(bson.ObjectID)
 
 	// Create OTP for email verification
 	if err = s.createOTP(ctx, email, "verify"); err != nil {
@@ -225,7 +224,7 @@ func (s *AuthService) RefreshTokens(ctx context.Context, refreshToken string) (s
 	}
 
 	var member models.Member
-	oid, _ := primitive.ObjectIDFromHex(rt.MemberID)
+	oid, _ := bson.ObjectIDFromHex(rt.MemberID)
 	if err = s.db.Members().FindOne(ctx, bson.M{"_id": oid}).Decode(&member); err != nil {
 		return "", "", errUnauthorized("Member not found")
 	}
@@ -257,7 +256,7 @@ func (s *AuthService) Logout(ctx context.Context, memberID, refreshToken string)
 	if refreshToken != "" {
 		s.db.RefreshTokens().DeleteOne(ctx, bson.M{"token": refreshToken})
 	}
-	oid, _ := primitive.ObjectIDFromHex(memberID)
+	oid, _ := bson.ObjectIDFromHex(memberID)
 	now := time.Now()
 	s.db.Members().UpdateByID(ctx, oid, bson.M{
 		"$set": bson.M{"online": false, "lastSeen": now, "updatedAt": now},

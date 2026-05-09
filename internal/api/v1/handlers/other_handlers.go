@@ -1,14 +1,13 @@
 package handlers
+import "go.mongodb.org/mongo-driver/v2/bson"
 
 import (
 	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/bson/primitive"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
+	"go.mongodb.org/mongo-driver/v2/mongo"
+	"go.mongodb.org/mongo-driver/v2/mongo/options"
 	"go.uber.org/zap"
 
 	"github.com/inheritance-choir/backend/internal/api/v1/middleware"
@@ -109,14 +108,14 @@ func (h *MessageHandler) Send(c *gin.Context) {
 		DeletedBy: []string{}, SentAt: time.Now(),
 	}
 	res, _ := h.db.Messages().InsertOne(c.Request.Context(), msg)
-	msg.ID = res.InsertedID.(primitive.ObjectID)
-	realtime.Publish("message:new", msg)
+	msg.ID = res.InsertedID.(bson.ObjectID)
+	realtime.Publish(realtime.EvtMessageSent, msg)
 	sendCreated(c, gin.H{"id": msg.ID.Hex(), "subject": msg.Subject}, "Message sent")
 }
 
 func (h *MessageHandler) GetByID(c *gin.Context) {
 	ctx := c.Request.Context()
-	oid, _ := primitive.ObjectIDFromHex(c.Param("id"))
+	oid, _ := bson.ObjectIDFromHex(c.Param("id"))
 	curr := middleware.CurrentMember(c)
 	var msg models.Message
 	if err := h.db.Messages().FindOne(ctx, bson.M{"_id": oid}).Decode(&msg); err != nil {
@@ -146,7 +145,7 @@ func (h *MessageHandler) React(c *gin.Context) {
 		return
 	}
 	ctx := c.Request.Context()
-	oid, _ := primitive.ObjectIDFromHex(c.Param("id"))
+	oid, _ := bson.ObjectIDFromHex(c.Param("id"))
 	curr := middleware.CurrentMember(c)
 	var msg models.Message
 	if err := h.db.Messages().FindOne(ctx, bson.M{"_id": oid}).Decode(&msg); err != nil {
@@ -172,13 +171,13 @@ func (h *MessageHandler) React(c *gin.Context) {
 	}
 	msg.Reactions[req.Emoji] = newUsers
 	h.db.Messages().UpdateByID(ctx, oid, bson.M{"$set": bson.M{"reactions": msg.Reactions}})
-	realtime.Publish("message:reaction", gin.H{"id": oid.Hex(), "emoji": req.Emoji, "count": len(newUsers), "reacted": !reacted})
+	realtime.Publish(realtime.EvtChatMessage, gin.H{"id": oid.Hex(), "emoji": req.Emoji, "count": len(newUsers), "reacted": !reacted})
 	c.JSON(http.StatusOK, gin.H{"success": true, "emoji": req.Emoji, "count": len(newUsers), "reacted": !reacted})
 }
 
 func (h *MessageHandler) Delete(c *gin.Context) {
 	ctx := c.Request.Context()
-	oid, _ := primitive.ObjectIDFromHex(c.Param("id"))
+	oid, _ := bson.ObjectIDFromHex(c.Param("id"))
 	curr := middleware.CurrentMember(c)
 	h.db.Messages().UpdateByID(ctx, oid, bson.M{"$addToSet": bson.M{"deletedBy": curr.ID.Hex()}})
 	c.Status(http.StatusNoContent)
@@ -286,8 +285,8 @@ func (h *AnalyticsHandler) Members(c *gin.Context) {
 func (h *AnalyticsHandler) YoY(c *gin.Context) {
 	// unused ctx removed
 	year := time.Now().Year()
-	thisY := primitive.Regex{Pattern: "^" + time.Now().Format("2006")}
-	lastY := primitive.Regex{Pattern: "^" + time.Date(year-1, 1, 1, 0, 0, 0, 0, time.UTC).Format("2006")}
+	thisY := bson.Regex{Pattern: "^" + time.Now().Format("2006")}
+	lastY := bson.Regex{Pattern: "^" + time.Date(year-1, 1, 1, 0, 0, 0, 0, time.UTC).Format("2006")}
 	_ = thisY
 	_ = lastY
 	sendSuccess(c, gin.H{"thisYear": year, "lastYear": year - 1}, "")
@@ -380,12 +379,12 @@ func (h *WelfareHandler) Create(c *gin.Context) {
 		wc.Timeline = []interface{}{}
 	}
 	res, _ := h.db.WelfareCases().InsertOne(c.Request.Context(), wc)
-	wc.ID = res.InsertedID.(primitive.ObjectID)
-	realtime.Publish("welfare:new", wc)
+	wc.ID = res.InsertedID.(bson.ObjectID)
+	realtime.Publish(realtime.EvtWelfareCreated, wc)
 	sendCreated(c, gin.H{"id": wc.ID.Hex()}, "Welfare case created")
 }
 func (h *WelfareHandler) GetByID(c *gin.Context) {
-	oid, _ := primitive.ObjectIDFromHex(c.Param("id"))
+	oid, _ := bson.ObjectIDFromHex(c.Param("id"))
 	var wc models.WelfareCase
 	if err := h.db.WelfareCases().FindOne(c.Request.Context(), bson.M{"_id": oid}).Decode(&wc); err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "Not found"})
@@ -394,12 +393,12 @@ func (h *WelfareHandler) GetByID(c *gin.Context) {
 	sendSuccess(c, wc, "")
 }
 func (h *WelfareHandler) Update(c *gin.Context) {
-	oid, _ := primitive.ObjectIDFromHex(c.Param("id"))
+	oid, _ := bson.ObjectIDFromHex(c.Param("id"))
 	var body map[string]interface{}
 	c.ShouldBindJSON(&body)
 	body["updatedAt"] = time.Now()
 	h.db.WelfareCases().UpdateByID(c.Request.Context(), oid, bson.M{"$set": body})
-	realtime.Publish("welfare:updated", gin.H{"id": oid.Hex()})
+	realtime.Publish(realtime.EvtWelfareUpdated, gin.H{"id": oid.Hex()})
 	sendSuccess(c, nil, "Updated")
 }
 func (h *WelfareHandler) AddTimeline(c *gin.Context) {
@@ -411,7 +410,7 @@ func (h *WelfareHandler) AddTimeline(c *gin.Context) {
 		return
 	}
 	curr := middleware.CurrentMember(c)
-	oid, _ := primitive.ObjectIDFromHex(c.Param("id"))
+	oid, _ := bson.ObjectIDFromHex(c.Param("id"))
 	entry := map[string]interface{}{"note": req.Note, "type": req.Type, "by": curr.ID.Hex(), "at": time.Now().Format(time.RFC3339)}
 	h.db.WelfareCases().UpdateByID(c.Request.Context(), oid, bson.M{"$push": bson.M{"timeline": entry}, "$set": bson.M{"updatedAt": time.Now()}})
 	sendSuccess(c, entry, "Timeline entry added")
@@ -451,35 +450,35 @@ func (h *PostHandler) Create(c *gin.Context) {
 		p.Comments = []interface{}{}
 	}
 	res, _ := h.db.Posts().InsertOne(c.Request.Context(), p)
-	p.ID = res.InsertedID.(primitive.ObjectID)
-	realtime.Publish("post:new", p)
+	p.ID = res.InsertedID.(bson.ObjectID)
+	realtime.Publish(realtime.EvtPostCreated, p)
 	sendCreated(c, gin.H{"id": p.ID.Hex()}, "Post created")
 }
 func (h *PostHandler) GetByID(c *gin.Context) {
-	oid, _ := primitive.ObjectIDFromHex(c.Param("id"))
+	oid, _ := bson.ObjectIDFromHex(c.Param("id"))
 	h.db.Posts().UpdateByID(c.Request.Context(), oid, bson.M{"$inc": bson.M{"viewCount": 1}})
 	var p models.Post
 	h.db.Posts().FindOne(c.Request.Context(), bson.M{"_id": oid}).Decode(&p)
 	sendSuccess(c, p, "")
 }
 func (h *PostHandler) Update(c *gin.Context) {
-	oid, _ := primitive.ObjectIDFromHex(c.Param("id"))
+	oid, _ := bson.ObjectIDFromHex(c.Param("id"))
 	var body map[string]interface{}
 	c.ShouldBindJSON(&body)
 	body["updatedAt"] = time.Now()
 	h.db.Posts().UpdateByID(c.Request.Context(), oid, bson.M{"$set": body})
-	realtime.Publish("post:updated", gin.H{"id": oid.Hex()})
+	realtime.Publish(realtime.EvtPostUpdated, gin.H{"id": oid.Hex()})
 	sendSuccess(c, nil, "Updated")
 }
 func (h *PostHandler) Delete(c *gin.Context) {
-	oid, _ := primitive.ObjectIDFromHex(c.Param("id"))
+	oid, _ := bson.ObjectIDFromHex(c.Param("id"))
 	h.db.Posts().DeleteOne(c.Request.Context(), bson.M{"_id": oid})
-	realtime.Publish("post:deleted", gin.H{"id": oid.Hex()})
+	realtime.Publish(realtime.EvtPostDeleted, gin.H{"id": oid.Hex()})
 	c.Status(http.StatusNoContent)
 }
 func (h *PostHandler) Like(c *gin.Context) {
 	ctx := c.Request.Context()
-	oid, _ := primitive.ObjectIDFromHex(c.Param("id"))
+	oid, _ := bson.ObjectIDFromHex(c.Param("id"))
 	curr := middleware.CurrentMember(c)
 	var p models.Post
 	h.db.Posts().FindOne(ctx, bson.M{"_id": oid}).Decode(&p)
@@ -497,6 +496,7 @@ func (h *PostHandler) Like(c *gin.Context) {
 		newLikes = append(newLikes, myID)
 	}
 	h.db.Posts().UpdateByID(ctx, oid, bson.M{"$set": bson.M{"likes": newLikes}})
+	realtime.Publish(realtime.EvtPostLiked, gin.H{"id": oid.Hex(), "total": len(newLikes)})
 	c.JSON(http.StatusOK, gin.H{"success": true, "liked": !liked, "total": len(newLikes)})
 }
 func (h *PostHandler) AddComment(c *gin.Context) {
@@ -507,12 +507,13 @@ func (h *PostHandler) AddComment(c *gin.Context) {
 		return
 	}
 	curr := middleware.CurrentMember(c)
-	oid, _ := primitive.ObjectIDFromHex(c.Param("id"))
+	oid, _ := bson.ObjectIDFromHex(c.Param("id"))
 	comment := map[string]interface{}{
 		"authorId": curr.ID.Hex(), "authorName": curr.FullName,
 		"text": req.Text, "at": time.Now().Format(time.RFC3339),
 	}
 	h.db.Posts().UpdateByID(c.Request.Context(), oid, bson.M{"$push": bson.M{"comments": comment}})
+	realtime.Publish(realtime.EvtPostComment, gin.H{"id": oid.Hex(), "comment": comment})
 	sendCreated(c, comment, "Comment added")
 }
 
@@ -553,30 +554,30 @@ func (h *SongHandler) Create(c *gin.Context) {
 	s.CreatedAt = now
 	s.UpdatedAt = now
 	res, _ := h.db.Songs().InsertOne(c.Request.Context(), s)
-	s.ID = res.InsertedID.(primitive.ObjectID)
-	realtime.Publish("song:new", s)
+	s.ID = res.InsertedID.(bson.ObjectID)
+	realtime.Publish(realtime.EvtSongCreated, s)
 	sendCreated(c, gin.H{"id": s.ID.Hex()}, "Song added")
 }
 func (h *SongHandler) GetByID(c *gin.Context) {
-	oid, _ := primitive.ObjectIDFromHex(c.Param("id"))
+	oid, _ := bson.ObjectIDFromHex(c.Param("id"))
 	var s models.Song
 	h.db.Songs().FindOne(c.Request.Context(), bson.M{"_id": oid}).Decode(&s)
 	sendSuccess(c, s, "")
 }
 func (h *SongHandler) Update(c *gin.Context) {
-	oid, _ := primitive.ObjectIDFromHex(c.Param("id"))
+	oid, _ := bson.ObjectIDFromHex(c.Param("id"))
 	var body map[string]interface{}
 	c.ShouldBindJSON(&body)
 	body["updatedAt"] = time.Now()
 	h.db.Songs().UpdateByID(c.Request.Context(), oid, bson.M{"$set": body})
-	realtime.Publish("song:updated", gin.H{"id": oid.Hex()})
+	realtime.Publish(realtime.EvtSongUpdated, gin.H{"id": oid.Hex()})
 	sendSuccess(c, nil, "Updated")
 }
 func (h *SongHandler) Delete(c *gin.Context) {
-	oid, _ := primitive.ObjectIDFromHex(c.Param("id"))
+	oid, _ := bson.ObjectIDFromHex(c.Param("id"))
 	h.db.Songs().DeleteOne(c.Request.Context(), bson.M{"_id": oid})
 	c.Status(http.StatusNoContent)
-	realtime.Publish("song:deleted", gin.H{"id": oid.Hex()})
+	realtime.Publish(realtime.EvtSongDeleted, gin.H{"id": oid.Hex()})
 }
 
 // ── Notifications ─────────────────────────────────────────────
@@ -602,9 +603,9 @@ func (h *NotificationHandler) List(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": notifs, "meta": gin.H{"total": total, "unreadCount": unread}})
 }
 func (h *NotificationHandler) MarkRead(c *gin.Context) {
-	oid, _ := primitive.ObjectIDFromHex(c.Param("id"))
+	oid, _ := bson.ObjectIDFromHex(c.Param("id"))
 	h.db.Notifications().UpdateByID(c.Request.Context(), oid, bson.M{"$set": bson.M{"isRead": true}})
-	realtime.Publish("notification:read", gin.H{"id": oid.Hex()})
+	realtime.Publish(realtime.EvtNotificationNew, gin.H{"id": oid.Hex()})
 	sendSuccess(c, nil, "Marked as read")
 }
 func (h *NotificationHandler) MarkAllRead(c *gin.Context) {
@@ -617,7 +618,7 @@ func (h *NotificationHandler) MarkAllRead(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "updated": res.ModifiedCount})
 }
 func (h *NotificationHandler) Delete(c *gin.Context) {
-	oid, _ := primitive.ObjectIDFromHex(c.Param("id"))
+	oid, _ := bson.ObjectIDFromHex(c.Param("id"))
 	h.db.Notifications().DeleteOne(c.Request.Context(), bson.M{"_id": oid})
 	c.Status(http.StatusNoContent)
 }
@@ -630,7 +631,7 @@ func (h *SettingsHandler) Get(c *gin.Context) {
 	if err != nil {
 		s = models.AppSettings{Key: "global", ChoirName: "INHERITANCE CHOIR", Currency: "RWF"}
 		res, _ := h.db.AppSettings().InsertOne(ctx, s)
-		s.ID = res.InsertedID.(primitive.ObjectID)
+		s.ID = res.InsertedID.(bson.ObjectID)
 	}
 	sendSuccess(c, s, "")
 }
@@ -639,8 +640,8 @@ func (h *SettingsHandler) Update(c *gin.Context) {
 	var body map[string]interface{}
 	c.ShouldBindJSON(&body)
 	body["updatedAt"] = time.Now()
-	h.db.AppSettings().UpdateOne(ctx, bson.M{"key": "global"}, bson.M{"$set": body}, options.Update().SetUpsert(true))
-	realtime.Publish("settings:updated", body)
+	h.db.AppSettings().UpdateOne(ctx, bson.M{"key": "global"}, bson.M{"$set": body}, options.UpdateOne().SetUpsert(true))
+	realtime.Publish(realtime.EvtSystemAlert, body)
 	sendSuccess(c, nil, "Settings updated")
 }
 
@@ -660,7 +661,7 @@ func (h *AdminHandler) ListRegistrations(c *gin.Context) {
 }
 func (h *AdminHandler) ApproveRegistration(c *gin.Context) {
 	ctx := c.Request.Context()
-	oid, _ := primitive.ObjectIDFromHex(c.Param("id"))
+	oid, _ := bson.ObjectIDFromHex(c.Param("id"))
 	now := time.Now()
 	res, _ := h.db.Members().UpdateByID(ctx, oid, bson.M{"$set": bson.M{"status": "active", "updatedAt": now}})
 	if res.MatchedCount == 0 {
@@ -677,11 +678,11 @@ func (h *AdminHandler) ApproveRegistration(c *gin.Context) {
 	h.db.Members().FindOne(ctx, bson.M{"_id": oid}).Decode(&m)
 	go h.mailer.SendApprovalEmail(m.Email, m.FullName)
 
-	realtime.Publish("member:approved", m)
+	realtime.Publish(realtime.EvtMemberApproved, m)
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Member approved"})
 }
 func (h *AdminHandler) RejectRegistration(c *gin.Context) {
-	oid, _ := primitive.ObjectIDFromHex(c.Param("id"))
+	oid, _ := bson.ObjectIDFromHex(c.Param("id"))
 	h.db.Members().DeleteOne(c.Request.Context(), bson.M{"_id": oid})
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Registration rejected"})
 }
@@ -712,8 +713,8 @@ func (h *AdminHandler) Broadcast(c *gin.Context) {
 		Reactions: map[string][]string{}, DeletedBy: []string{}, SentAt: time.Now(),
 	}
 	res, _ := h.db.Messages().InsertOne(ctx, msg)
-	msg.ID = res.InsertedID.(primitive.ObjectID)
-	realtime.Publish("message:new", msg)
+	msg.ID = res.InsertedID.(bson.ObjectID)
+	realtime.Publish(realtime.EvtMessageSent, msg)
 
 	filter := bson.M{"status": "active"}
 	if req.ToVoicePart != "" {
@@ -741,7 +742,7 @@ func (h *AdminHandler) RevokeSessions(c *gin.Context) {
 	ctx := c.Request.Context()
 	id := c.Param("id")
 	h.db.RefreshTokens().DeleteMany(ctx, bson.M{"memberId": id})
-	oid, _ := primitive.ObjectIDFromHex(id)
+	oid, _ := bson.ObjectIDFromHex(id)
 	h.db.Members().UpdateByID(ctx, oid, bson.M{"$set": bson.M{"online": false}})
 	c.Status(http.StatusNoContent)
 }

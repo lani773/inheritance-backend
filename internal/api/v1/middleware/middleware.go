@@ -1,5 +1,6 @@
 // Package middleware provides Gin middleware for the Inheritance Choir API.
 package middleware
+import "go.mongodb.org/mongo-driver/v2/bson"
 
 import (
 	"net/http"
@@ -8,8 +9,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.uber.org/zap"
 
 	"github.com/inheritance-choir/backend/internal/models"
@@ -190,7 +189,7 @@ func SimpleRateLimiter(requestsPerMin int) gin.HandlerFunc {
 // ─── Helpers ──────────────────────────────────────────────────
 
 func mustObjectID(id string) interface{} {
-	oid, err := primitive.ObjectIDFromHex(id)
+	oid, err := bson.ObjectIDFromHex(id)
 	if err != nil {
 		return id
 	}

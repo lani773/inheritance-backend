@@ -1,4 +1,5 @@
 package handlers
+import "go.mongodb.org/mongo-driver/v2/bson"
 
 import (
 	"context"
@@ -6,10 +7,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/bson/primitive"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
+	"go.mongodb.org/mongo-driver/v2/mongo"
+	"go.mongodb.org/mongo-driver/v2/mongo/options"
 	"go.uber.org/zap"
 
 	"github.com/inheritance-choir/backend/internal/api/v1/middleware"
@@ -172,16 +171,16 @@ func (h *ContributionHandler) Create(c *gin.Context) {
 		return
 	}
 
-	req.ID = res.InsertedID.(primitive.ObjectID)
+	req.ID = res.InsertedID.(bson.ObjectID)
 	h.recalcMemberTotal(ctx, req.MemberID)
-	realtime.Publish("contribution:new", req)
+	realtime.Publish(realtime.EvtContributionCreated, req)
 	c.JSON(http.StatusCreated, gin.H{"success": true, "message": "Contribution recorded", "data": req})
 }
 
 // GET /contributions/:id
 func (h *ContributionHandler) GetByID(c *gin.Context) {
 	ctx := c.Request.Context()
-	oid, _ := primitive.ObjectIDFromHex(c.Param("id"))
+	oid, _ := bson.ObjectIDFromHex(c.Param("id"))
 	var item models.Contribution
 	if err := h.db.Contributions().FindOne(ctx, bson.M{"_id": oid}).Decode(&item); err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "Not found"})
@@ -193,7 +192,7 @@ func (h *ContributionHandler) GetByID(c *gin.Context) {
 // PUT /contributions/:id
 func (h *ContributionHandler) Update(c *gin.Context) {
 	ctx := c.Request.Context()
-	oid, _ := primitive.ObjectIDFromHex(c.Param("id"))
+	oid, _ := bson.ObjectIDFromHex(c.Param("id"))
 	var body map[string]interface{}
 	c.ShouldBindJSON(&body)
 	body["updatedAt"] = time.Now()
@@ -201,26 +200,26 @@ func (h *ContributionHandler) Update(c *gin.Context) {
 	var item models.Contribution
 	h.db.Contributions().FindOne(ctx, bson.M{"_id": oid}).Decode(&item)
 	h.recalcMemberTotal(ctx, item.MemberID)
-	realtime.Publish("contribution:updated", item)
+	realtime.Publish(realtime.EvtContributionCreated, item)
 	sendSuccess(c, item, "Updated")
 }
 
 // DELETE /contributions/:id
 func (h *ContributionHandler) Delete(c *gin.Context) {
 	ctx := c.Request.Context()
-	oid, _ := primitive.ObjectIDFromHex(c.Param("id"))
+	oid, _ := bson.ObjectIDFromHex(c.Param("id"))
 	var item models.Contribution
 	h.db.Contributions().FindOne(ctx, bson.M{"_id": oid}).Decode(&item)
 	h.db.Contributions().DeleteOne(ctx, bson.M{"_id": oid})
 	h.recalcMemberTotal(ctx, item.MemberID)
-	realtime.Publish("contribution:deleted", gin.H{"id": oid.Hex(), "memberId": item.MemberID})
+	realtime.Publish(realtime.EvtContributionDeleted, gin.H{"id": oid.Hex(), "memberId": item.MemberID})
 	c.Status(http.StatusNoContent)
 }
 
 // POST /contributions/:id/verify
 func (h *ContributionHandler) Verify(c *gin.Context) {
 	ctx := c.Request.Context()
-	oid, _ := primitive.ObjectIDFromHex(c.Param("id"))
+	oid, _ := bson.ObjectIDFromHex(c.Param("id"))
 	curr := middleware.CurrentMember(c)
 	now := time.Now()
 	verBy := curr.ID.Hex()
@@ -229,7 +228,7 @@ func (h *ContributionHandler) Verify(c *gin.Context) {
 	})
 	var item models.Contribution
 	h.db.Contributions().FindOne(ctx, bson.M{"_id": oid}).Decode(&item)
-	realtime.Publish("contribution:verified", item)
+	realtime.Publish(realtime.EvtContributionVerified, item)
 	sendSuccess(c, item, "Contribution verified")
 }
 
@@ -247,9 +246,9 @@ func (h *ContributionHandler) BulkVerify(c *gin.Context) {
 	now := time.Now()
 	verBy := curr.ID.Hex()
 
-	var oids []primitive.ObjectID
+	var oids []bson.ObjectID
 	for _, id := range req.IDs {
-		if oid, err := primitive.ObjectIDFromHex(id); err == nil {
+		if oid, err := bson.ObjectIDFromHex(id); err == nil {
 			oids = append(oids, oid)
 		}
 	}
@@ -277,7 +276,7 @@ func (h *ContributionHandler) recalcMemberTotal(ctx context.Context, memberID st
 		total = agg[0].Total
 	}
 
-	oid, err := primitive.ObjectIDFromHex(memberID)
+	oid, err := bson.ObjectIDFromHex(memberID)
 	if err != nil {
 		return
 	}

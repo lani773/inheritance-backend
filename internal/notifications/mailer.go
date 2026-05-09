@@ -20,47 +20,7 @@ type Mailer struct {
 	name   string
 	cfg    *config.Config
 	log    *zap.Logger
-}
-
-// New creates a Mailer. In dev mode, emails are only logged.
-func New(cfg *config.Config, log *zap.Logger) *Mailer {
-	d := gomail.NewDialer(cfg.MailHost, cfg.MailPort, cfg.MailUser, cfg.MailPassword)
-	return &Mailer{
-		dialer: d,
-		from:   cfg.MailFrom,
-		name:   cfg.MailFromName,
-		cfg:    cfg,
-		log:    log,
-	}
-}
-
-func (m *Mailer) send(to, subject, htmlBody string) {
-	if !m.cfg.EnableNotifications {
-		m.log.Info("[DEV EMAIL - NOTIFICATIONS DISABLED]",
-			zap.String("to", to),
-			zap.String("subject", subject),
-		)
-		return
-	}
-
-	msg := gomail.NewMessage()
-	msg.SetAddressHeader("From", m.from, m.name)
-	msg.SetHeader("To", to)
-	msg.SetHeader("Subject", subject)
-	msg.SetBody("text/html", htmlBody)
-
-	// Retry loop for transient network errors (up to 3 attempts)
-	var err error
-	for i := 0; i < 3; i++ {
-		if err = m.dialer.DialAndSend(msg); err == nil {
-			m.log.Info("Email sent", zap.String("to", to), zap.String("subject", subject), zap.Int("attempt", i+1))
-			return
-		}
-		m.log.Warn("Email attempt failed", zap.Int("attempt", i+1), zap.Error(err))
-		time.Sleep(time.Duration(i+1) * time.Second)
-	}
-
-	m.log.Error("Email send failed after retries", zap.String("to", to), zap.Error(err))
+	tmpl   *template.Template
 }
 
 // Gold-themed base HTML template
@@ -83,10 +43,51 @@ const baseHTML = `<!DOCTYPE html><html><head><meta charset="UTF-8">
   </div>
 </div></body></html>`
 
+// New creates a Mailer. In dev mode, emails are only logged.
+func New(cfg *config.Config, log *zap.Logger) *Mailer {
+	d := gomail.NewDialer(cfg.MailHost, cfg.MailPort, cfg.MailUser, cfg.MailPassword)
+	tmpl := template.Must(template.New("email").Parse(baseHTML))
+	return &Mailer{
+		dialer: d,
+		from:   cfg.MailFrom,
+		name:   cfg.MailFromName,
+		cfg:    cfg,
+		log:    log,
+		tmpl:   tmpl,
+	}
+}
+
+func (m *Mailer) send(to, subject, htmlBody string) {
+	if !m.cfg.EnableNotifications {
+		m.log.Info("[DEV EMAIL - NOTIFICATIONS DISABLED]",
+			zap.String("to", to),
+			zap.String("subject", subject),
+		)
+		return
+	}
+
+	msg := gomail.NewMessage()
+	msg.SetAddressHeader("From", m.from, m.name)
+	msg.SetHeader("To", to)
+	msg.SetHeader("Subject", subject)
+	msg.SetBody("text/html", htmlBody)
+
+	var err error
+	for i := 0; i < 3; i++ {
+		if err = m.dialer.DialAndSend(msg); err == nil {
+			m.log.Info("Email sent", zap.String("to", to), zap.String("subject", subject), zap.Int("attempt", i+1))
+			return
+		}
+		m.log.Warn("Email attempt failed", zap.Int("attempt", i+1), zap.Error(err))
+		time.Sleep(time.Duration(i+1) * time.Second)
+	}
+
+	m.log.Error("Email send failed after retries", zap.String("to", to), zap.Error(err))
+}
+
 func (m *Mailer) render(subject, bodyHTML string) string {
-	t := template.Must(template.New("email").Parse(baseHTML))
 	var buf bytes.Buffer
-	t.Execute(&buf, map[string]template.HTML{
+	m.tmpl.Execute(&buf, map[string]template.HTML{
 		"Subject": template.HTML(subject),
 		"Body":    template.HTML(bodyHTML),
 	})
@@ -250,4 +251,3 @@ func firstWord(s string) string {
 func (m *Mailer) SendGeneric(to, fullName, subject, bodyHTML string) {
 	m.send(to, subject, m.render(subject, bodyHTML))
 }
-

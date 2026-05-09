@@ -47,7 +47,7 @@ func FormatMember(m *models.Member) MemberPublic {
 		IsAdmin:       m.IsAdmin,
 		Permissions:   perms,
 		Attendance:    m.Attendance,
-		ContribTotal:  m.ContribTotal,
+		ContribTotal:  m.ContributionTotal,
 		JoinDate:      m.JoinDate.Format("2006-01-02"),
 		Online:        m.Online,
 	}

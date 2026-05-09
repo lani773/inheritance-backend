@@ -1,6 +1,7 @@
 // scripts/seed.go — seeds the database with sample data
 // Run: go run ./scripts/seed.go
 package main
+import "go.mongodb.org/mongo-driver/v2/bson"
 
 import (
 	"context"
@@ -8,9 +9,8 @@ import (
 	"os"
 	"time"
 
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
+	"go.mongodb.org/mongo-driver/v2/mongo"
+	"go.mongodb.org/mongo-driver/v2/mongo/options"
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/inheritance-choir/backend/internal/config"
@@ -23,7 +23,7 @@ func main() {
 
 	// Simple logger for seed
 	fmt.Println("🌱 Connecting to MongoDB…")
-	client, _ := mongo.Connect(context.Background(),
+	client, _ := mongo.Connect(
 		options.Client().ApplyURI(cfg.MongoURI))
 	defer client.Disconnect(context.Background())
 	db := client.Database(cfg.MongoDB)
@@ -89,7 +89,7 @@ func main() {
 				Title: ev.Title, Type: ev.Type, Date: date,
 				Time: "09:00", EndTime: "11:00",
 				Location: "Kigali Main Church",
-				Mandatory: ev.Mandatory, TargetVoices: []string{},
+				IsMandatory: ev.Mandatory, TargetVoices: []string{},
 				CreatedAt: now, UpdatedAt: now,
 			})
 			fmt.Printf("   ✅ Event: %s\n", ev.Title)

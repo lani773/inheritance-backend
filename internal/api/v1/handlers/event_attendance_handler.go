@@ -1,4 +1,5 @@
 package handlers
+import "go.mongodb.org/mongo-driver/v2/bson"
 
 import (
 	"context"
@@ -8,10 +9,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/bson/primitive"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
+	"go.mongodb.org/mongo-driver/v2/mongo"
+	"go.mongodb.org/mongo-driver/v2/mongo/options"
 	"go.uber.org/zap"
 
 	"github.com/inheritance-choir/backend/internal/api/v1/middleware"
@@ -124,20 +123,20 @@ func (h *EventHandler) Create(c *gin.Context) {
 	ev.CreatedAt = now
 	ev.UpdatedAt = now
 	cid := curr.ID
-	ev.CreatedBy = &cid
+	ev.CreatedBy = cid.Hex()
 
 	res, err := h.db.Events().InsertOne(c.Request.Context(), ev)
 	if err != nil {
 		respondError(c, err)
 		return
 	}
-	ev.ID = res.InsertedID.(primitive.ObjectID)
-	realtime.Publish("event:created", ev)
+	ev.ID = res.InsertedID.(bson.ObjectID)
+	realtime.Publish(realtime.EvtEventCreated, ev)
 	sendCreated(c, ev, "Event created")
 }
 
 func (h *EventHandler) GetByID(c *gin.Context) {
-	oid, err := primitive.ObjectIDFromHex(c.Param("id"))
+	oid, err := bson.ObjectIDFromHex(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid ID"})
 		return
@@ -151,21 +150,21 @@ func (h *EventHandler) GetByID(c *gin.Context) {
 }
 
 func (h *EventHandler) Update(c *gin.Context) {
-	oid, _ := primitive.ObjectIDFromHex(c.Param("id"))
+	oid, _ := bson.ObjectIDFromHex(c.Param("id"))
 	var body map[string]interface{}
 	c.ShouldBindJSON(&body)
 	body["updatedAt"] = time.Now()
 	h.db.Events().UpdateByID(c.Request.Context(), oid, bson.M{"$set": body})
 	var ev models.Event
 	h.db.Events().FindOne(c.Request.Context(), bson.M{"_id": oid}).Decode(&ev)
-	realtime.Publish("event:updated", ev)
+	realtime.Publish(realtime.EvtEventUpdated, ev)
 	sendSuccess(c, ev, "Updated")
 }
 
 func (h *EventHandler) Delete(c *gin.Context) {
-	oid, _ := primitive.ObjectIDFromHex(c.Param("id"))
+	oid, _ := bson.ObjectIDFromHex(c.Param("id"))
 	h.db.Events().DeleteOne(c.Request.Context(), bson.M{"_id": oid})
-	realtime.Publish("event:deleted", gin.H{"id": oid.Hex()})
+	realtime.Publish(realtime.EvtEventDeleted, gin.H{"id": oid.Hex()})
 	c.Status(http.StatusNoContent)
 }
 
@@ -178,7 +177,7 @@ func (h *EventHandler) GetAttendance(c *gin.Context) {
 	cursor.Close(ctx)
 
 	for i, r := range recs {
-		oid, err := primitive.ObjectIDFromHex(r.MemberID)
+		oid, err := bson.ObjectIDFromHex(r.MemberID)
 		if err != nil {
 			continue
 		}
@@ -218,7 +217,7 @@ func (h *AttendanceHandler) BulkMark(c *gin.Context) {
 
 	ctx := c.Request.Context()
 	curr := middleware.CurrentMember(c)
-	eid, _ := primitive.ObjectIDFromHex(req.EventID)
+	eid, _ := bson.ObjectIDFromHex(req.EventID)
 
 	var ev models.Event
 	if err := h.db.Events().FindOne(ctx, bson.M{"_id": eid}).Decode(&ev); err != nil {
@@ -238,7 +237,7 @@ func (h *AttendanceHandler) BulkMark(c *gin.Context) {
 				"markedBy": curr.ID.Hex(), "markedAt": time.Now(),
 				"eventId": req.EventID, "memberId": rec.MemberID,
 			}},
-			options.Update().SetUpsert(true),
+			options.UpdateOne().SetUpsert(true),
 		)
 		if err != nil {
 			errs = append(errs, gin.H{"memberId": rec.MemberID, "error": err.Error()})
@@ -256,7 +255,7 @@ func (h *AttendanceHandler) BulkMark(c *gin.Context) {
 		"success": true, "saved": saved, "errors": errs,
 		"message": fmt.Sprintf("Attendance saved: %d/%d", saved, len(req.Records)),
 	})
-	realtime.Publish("attendance:bulk_marked", gin.H{"eventId": req.EventID, "saved": saved})
+	realtime.Publish(realtime.EvtAttendanceMarked, gin.H{"eventId": req.EventID, "saved": saved})
 }
 
 func (h *AttendanceHandler) List(c *gin.Context) {
@@ -348,8 +347,8 @@ func (h *AttendanceHandler) QRCheckin(c *gin.Context) {
 	}
 	ctx := c.Request.Context()
 	curr := middleware.CurrentMember(c)
-	eid, _ := primitive.ObjectIDFromHex(req.EventID)
-	mid, _ := primitive.ObjectIDFromHex(req.MemberID)
+	eid, _ := bson.ObjectIDFromHex(req.EventID)
+	mid, _ := bson.ObjectIDFromHex(req.MemberID)
 
 	var ev models.Event
 	var member models.Member
@@ -370,11 +369,11 @@ func (h *AttendanceHandler) QRCheckin(c *gin.Context) {
 			"markedBy": curr.ID.Hex(), "markedAt": now,
 			"eventId": req.EventID, "memberId": req.MemberID,
 		}},
-		options.Update().SetUpsert(true),
+		options.UpdateOne().SetUpsert(true),
 	)
 	h.recalcAttendance(ctx, req.MemberID)
 
-	realtime.Publish("attendance:marked", gin.H{"eventId": req.EventID, "memberId": req.MemberID, "status": "present", "markedAt": now})
+	realtime.Publish(realtime.EvtAttendanceMarked, gin.H{"eventId": req.EventID, "memberId": req.MemberID, "status": "present", "markedAt": now})
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"member":  gin.H{"id": member.ID.Hex(), "fullName": member.FullName, "voicePart": member.VoicePart},
@@ -385,7 +384,7 @@ func (h *AttendanceHandler) QRCheckin(c *gin.Context) {
 
 func (h *AttendanceHandler) Delete(c *gin.Context) {
 	ctx := c.Request.Context()
-	oid, _ := primitive.ObjectIDFromHex(c.Param("id"))
+	oid, _ := bson.ObjectIDFromHex(c.Param("id"))
 	var rec models.Attendance
 	h.db.Attendances().FindOne(ctx, bson.M{"_id": oid}).Decode(&rec)
 	h.db.Attendances().DeleteOne(ctx, bson.M{"_id": oid})
@@ -431,7 +430,7 @@ func (h *AttendanceHandler) SubmitExcuse(c *gin.Context) {
 		CreatedAt: now, UpdatedAt: now,
 	}
 	res, _ := h.db.Excuses().InsertOne(c.Request.Context(), excuse)
-	excuse.ID = res.InsertedID.(primitive.ObjectID)
+	excuse.ID = res.InsertedID.(bson.ObjectID)
 	sendCreated(c, gin.H{"id": excuse.ID.Hex()}, "Excuse submitted for review")
 }
 
@@ -445,7 +444,7 @@ func (h *AttendanceHandler) ReviewExcuse(c *gin.Context) {
 	}
 	ctx := c.Request.Context()
 	curr := middleware.CurrentMember(c)
-	oid, _ := primitive.ObjectIDFromHex(c.Param("id"))
+	oid, _ := bson.ObjectIDFromHex(c.Param("id"))
 	now := time.Now()
 
 	h.db.Excuses().UpdateByID(ctx, oid, bson.M{"$set": bson.M{
@@ -459,7 +458,7 @@ func (h *AttendanceHandler) ReviewExcuse(c *gin.Context) {
 		h.db.Attendances().UpdateOne(ctx,
 			bson.M{"eventId": excuse.EventID, "memberId": excuse.MemberID},
 			bson.M{"$set": bson.M{"status": "excused"}},
-			options.Update().SetUpsert(true),
+			options.UpdateOne().SetUpsert(true),
 		)
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "status": req.Status, "message": "Excuse " + req.Status})
@@ -474,7 +473,7 @@ func (h *AttendanceHandler) recalcAttendance(ctx context.Context, memberID strin
 	if total > 0 {
 		rate = math.Round(float64(attended)/float64(total)*1000) / 10
 	}
-	oid, err := primitive.ObjectIDFromHex(memberID)
+	oid, err := bson.ObjectIDFromHex(memberID)
 	if err != nil {
 		return
 	}

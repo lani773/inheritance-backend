@@ -3,7 +3,7 @@ services:
     type: web
     env: go
     plan: standard
-    buildCommand: go build -o app main.go
+    buildCommand: go build -o app ./cmd/server
     startCommand: ./app
     envVars:
       - key: DATABASE_URL

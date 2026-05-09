@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"time"
 
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
+	"go.mongodb.org/mongo-driver/v2/bson"
+	"go.mongodb.org/mongo-driver/v2/mongo"
+	"go.mongodb.org/mongo-driver/v2/mongo/options"
 	"go.uber.org/zap"
 
 	"github.com/inheritance-choir/backend/internal/config"
@@ -52,15 +52,17 @@ func Connect(cfg *config.Config, log *zap.Logger) (*DB, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
+	serverAPI := options.ServerAPI(options.ServerAPIVersion1)
 	opts := options.Client().
 		ApplyURI(cfg.MongoURI).
+		SetServerAPIOptions(serverAPI).
 		SetMinPoolSize(cfg.MongoPoolMin).
 		SetMaxPoolSize(cfg.MongoPoolMax).
 		SetConnectTimeout(5 * time.Second).
 		SetServerSelectionTimeout(5 * time.Second).
 		SetCompressors([]string{"snappy", "zlib"})
 
-	client, err := mongo.Connect(ctx, opts)
+	client, err := mongo.Connect(opts)
 	if err != nil {
 		return nil, fmt.Errorf("mongo connect: %w", err)
 	}
@@ -75,7 +77,7 @@ func Connect(cfg *config.Config, log *zap.Logger) (*DB, error) {
 		return nil, fmt.Errorf("mongo indexes: %w", err)
 	}
 
-	log.Info("✅ MongoDB connected",
+	log.Info("✅ MongoDB connected with Stable API v1",
 		zap.String("uri", cfg.MongoURI),
 		zap.String("db", cfg.MongoDB),
 	)
