@@ -1,34 +1,17 @@
 services:
-  backend:
-    type: web
+  - type: web
+    name: inheritance-backend
     env: go
-    plan: standard
+    plan: starter
     buildCommand: go build -o app ./cmd/server
     startCommand: ./app
     envVars:
-      - key: DATABASE_URL
-        value: secret://MONGODB_CONNECTION_STRING
-      - key: API_KEY
-        value: secret://YOUR_API_KEY
-    healthCheck:
-      path: /health
-      initialDelay: 30
-      interval: 10
-      timeout: 5
-      healthyThreshold: 2
-      unhealthyThreshold: 3
-
-  mongo:
-    type: readonly
-    plan: dedicated
-    env: mongo
-    envVars:
-      - key: MONGO_URI
-        value: secret://MONGODB_ATLAS_URI
-    healthCheck:
-      path: /health
-      initialDelay: 30
-      interval: 10
-      timeout: 5
-      healthyThreshold: 2
-      unhealthyThreshold: 3
+      - key: MONGODB_URI
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: PORT
+        value: 8080
+      - key: ENVIRONMENT
+        value: production
+    healthCheckPath: /health
