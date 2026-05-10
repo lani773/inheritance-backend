@@ -1,4 +1,5 @@
 package handlers
+import "go.mongodb.org/mongo-driver/v2/bson"
 
 import (
 	"net/http"
@@ -7,10 +8,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/skip2/go-qrcode"
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/bson/primitive"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
+	"go.mongodb.org/mongo-driver/v2/mongo"
+	"go.mongodb.org/mongo-driver/v2/mongo/options"
 	"go.uber.org/zap"
 
 	"github.com/inheritance-choir/backend/internal/api/v1/middleware"
@@ -181,15 +180,15 @@ func (h *MemberHandler) Create(c *gin.Context) {
 		return
 	}
 
-	member.ID = res.InsertedID.(primitive.ObjectID)
-	realtime.Publish("member:new", utils.FormatMember(&member))
+	member.ID = res.InsertedID.(bson.ObjectID)
+	realtime.Publish(realtime.EvtMemberCreated, utils.FormatMember(&member))
 	c.JSON(http.StatusCreated, gin.H{"success": true, "message": "Member created", "data": utils.FormatMember(&member)})
 }
 
 // GET /members/:id
 func (h *MemberHandler) GetByID(c *gin.Context) {
 	ctx := c.Request.Context()
-	oid, err := primitive.ObjectIDFromHex(c.Param("id"))
+	oid, err := bson.ObjectIDFromHex(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid ID"})
 		return
@@ -228,13 +227,13 @@ func (h *MemberHandler) Update(c *gin.Context) {
 		update["isAdmin"] = r == "president"
 	}
 
-	oid, _ := primitive.ObjectIDFromHex(id)
+	oid, _ := bson.ObjectIDFromHex(id)
 	h.db.Members().UpdateByID(ctx, oid, bson.M{"$set": update})
 
 	var updated models.Member
 	h.db.Members().FindOne(ctx, bson.M{"_id": oid},
 		options.FindOne().SetProjection(bson.M{"passwordHash": 0})).Decode(&updated)
-	realtime.Publish("member:updated", utils.FormatMember(&updated))
+	realtime.Publish(realtime.EvtMemberUpdated, utils.FormatMember(&updated))
 	sendSuccess(c, utils.FormatMember(&updated), "Member updated")
 }
 
@@ -244,7 +243,7 @@ func (h *MemberHandler) Delete(c *gin.Context) {
 	id := c.Param("id")
 	curr := middleware.CurrentMember(c)
 
-	oid, _ := primitive.ObjectIDFromHex(id)
+	oid, _ := bson.ObjectIDFromHex(id)
 	var member models.Member
 	h.db.Members().FindOne(ctx, bson.M{"_id": oid}).Decode(&member)
 	if member.IsAdmin {
@@ -256,14 +255,14 @@ func (h *MemberHandler) Delete(c *gin.Context) {
 		return
 	}
 	h.db.Members().DeleteOne(ctx, bson.M{"_id": oid})
-	realtime.Publish("member:deleted", gin.H{"id": id})
+	realtime.Publish(realtime.EvtMemberDeleted, gin.H{"id": id})
 	c.Status(http.StatusNoContent)
 }
 
 // POST /members/:id/approve
 func (h *MemberHandler) Approve(c *gin.Context) {
 	ctx := c.Request.Context()
-	oid, _ := primitive.ObjectIDFromHex(c.Param("id"))
+	oid, _ := bson.ObjectIDFromHex(c.Param("id"))
 	now := time.Now()
 	h.db.Members().UpdateByID(ctx, oid, bson.M{
 		"$set": bson.M{"status": "active", "updatedAt": now},
@@ -274,7 +273,7 @@ func (h *MemberHandler) Approve(c *gin.Context) {
 
 	go h.mailer.SendApprovalEmail(m.Email, m.FullName)
 
-	realtime.Publish("member:approved", utils.FormatMember(&m))
+	realtime.Publish(realtime.EvtMemberApproved, utils.FormatMember(&m))
 	sendSuccess(c, utils.FormatMember(&m), m.FullName+" approved")
 }
 

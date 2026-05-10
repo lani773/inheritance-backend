@@ -1,4 +1,5 @@
 package handlers
+import "go.mongodb.org/mongo-driver/v2/bson"
 
 import (
 	"context"
@@ -12,10 +13,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/bson/primitive"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
+	"go.mongodb.org/mongo-driver/v2/mongo"
+	"go.mongodb.org/mongo-driver/v2/mongo/options"
 	"go.uber.org/zap"
 
 	"github.com/inheritance-choir/backend/internal/api/v1/middleware"
@@ -112,11 +111,11 @@ func NewIntelligenceHandler(db *repository.DB, log *zap.Logger) *IntelligenceHan
 	return &IntelligenceHandler{db, log}
 }
 
-func oidParam(c *gin.Context) (primitive.ObjectID, bool) {
-	oid, err := primitive.ObjectIDFromHex(c.Param("id"))
+func oidParam(c *gin.Context) (bson.ObjectID, bool) {
+	oid, err := bson.ObjectIDFromHex(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid ID"})
-		return primitive.NilObjectID, false
+		return bson.NilObjectID, false
 	}
 	return oid, true
 }
@@ -153,7 +152,7 @@ func (h *SearchHandler) Search(c *gin.Context) {
 		results[name] = docs
 	}
 
-	regex := primitive.Regex{Pattern: q, Options: "i"}
+	regex := bson.Regex{Pattern: q, Options: "i"}
 	add("members", h.db.Members(), bson.M{"$or": bson.A{bson.M{"fullName": regex}, bson.M{"email": regex}, bson.M{"voicePart": regex}}}, bson.M{"passwordHash": 0})
 	add("events", h.db.Events(), bson.M{"$or": bson.A{bson.M{"title": regex}, bson.M{"location": regex}, bson.M{"description": regex}}}, bson.M{})
 	add("songs", h.db.Songs(), bson.M{"$or": bson.A{bson.M{"title": regex}, bson.M{"artist": regex}, bson.M{"lyrics": regex}}}, bson.M{})
@@ -188,8 +187,8 @@ func (h *SetlistHandler) Create(c *gin.Context) {
 		respondError(c, err)
 		return
 	}
-	item.ID = res.InsertedID.(primitive.ObjectID)
-	h.hub.Publish("setlist:updated", realtime.ChGeneral, item)
+	item.ID = res.InsertedID.(bson.ObjectID)
+	h.hub.Publish(realtime.EvtSetlistUpdated, realtime.ChGeneral, item)
 	sendCreated(c, item, "Setlist saved")
 }
 
@@ -217,7 +216,7 @@ func (h *SetlistHandler) Update(c *gin.Context) {
 	h.db.Setlists().UpdateByID(c.Request.Context(), oid, bson.M{"$set": body})
 	var item models.Setlist
 	h.db.Setlists().FindOne(c.Request.Context(), bson.M{"_id": oid}).Decode(&item)
-	h.hub.Publish("setlist:updated", realtime.ChGeneral, item)
+	h.hub.Publish(realtime.EvtSetlistUpdated, realtime.ChGeneral, item)
 	sendSuccess(c, item, "Setlist updated")
 }
 
@@ -227,7 +226,7 @@ func (h *SetlistHandler) Delete(c *gin.Context) {
 		return
 	}
 	h.db.Setlists().DeleteOne(c.Request.Context(), bson.M{"_id": oid})
-	h.hub.Publish("setlist:deleted", realtime.ChGeneral, gin.H{"id": oid.Hex()})
+	h.hub.Publish(realtime.EvtSetlistDeleted, realtime.ChGeneral, gin.H{"id": oid.Hex()})
 	c.Status(http.StatusNoContent)
 }
 
@@ -257,8 +256,8 @@ func (h *BudgetHandler) Upsert(c *gin.Context) {
 	goal.CreatedBy = currentID(c)
 	goal.UpdatedAt = now
 	update := bson.M{"$set": bson.M{"target": goal.Target, "updatedAt": now}, "$setOnInsert": bson.M{"year": goal.Year, "type": goal.Type, "createdBy": goal.CreatedBy, "createdAt": now}}
-	h.db.BudgetGoals().UpdateOne(c.Request.Context(), bson.M{"year": goal.Year, "type": goal.Type}, update, options.Update().SetUpsert(true))
-	h.hub.Publish("budget:updated", realtime.ChFinance, goal)
+	h.db.BudgetGoals().UpdateOne(c.Request.Context(), bson.M{"year": goal.Year, "type": goal.Type}, update, options.UpdateOne().SetUpsert(true))
+	h.hub.Publish(realtime.EvtBudgetUpdated, realtime.ChFinance, goal)
 	sendSuccess(c, goal, "Budget goal saved")
 }
 
@@ -283,8 +282,8 @@ func (h *PledgeHandler) CreateCampaign(c *gin.Context) {
 	item.CreatedAt = now
 	item.UpdatedAt = now
 	res, _ := h.db.PledgeCampaigns().InsertOne(c.Request.Context(), item)
-	item.ID = res.InsertedID.(primitive.ObjectID)
-	h.hub.Publish("pledge:campaign:new", realtime.ChFinance, item)
+	item.ID = res.InsertedID.(bson.ObjectID)
+	h.hub.Publish(realtime.EvtPledgeCampaignNew, realtime.ChFinance, item)
 	sendCreated(c, item, "Campaign created")
 }
 
@@ -327,8 +326,8 @@ func (h *PledgeHandler) CreatePledge(c *gin.Context) {
 	item.CreatedAt = now
 	item.UpdatedAt = now
 	res, _ := h.db.Pledges().InsertOne(c.Request.Context(), item)
-	item.ID = res.InsertedID.(primitive.ObjectID)
-	h.hub.Publish("pledge:new", realtime.ChFinance, item)
+	item.ID = res.InsertedID.(bson.ObjectID)
+	h.hub.Publish(realtime.EvtPledgeNew, realtime.ChFinance, item)
 	sendCreated(c, item, "Pledge saved")
 }
 
@@ -361,8 +360,8 @@ func (h *AutomationHandler) Create(c *gin.Context) {
 	item.CreatedAt = now
 	item.UpdatedAt = now
 	res, _ := h.db.AutomationRules().InsertOne(c.Request.Context(), item)
-	item.ID = res.InsertedID.(primitive.ObjectID)
-	h.hub.Publish("automation:updated", realtime.ChAdmin, item)
+	item.ID = res.InsertedID.(bson.ObjectID)
+	h.hub.Publish(realtime.EvtAutomationUpdated, realtime.ChAdmin, item)
 	sendCreated(c, item, "Automation rule created")
 }
 
@@ -428,7 +427,7 @@ func (h *APIKeyHandler) Create(c *gin.Context) {
 	now := time.Now()
 	key := models.APIKey{Name: req.Name, KeyHash: hex.EncodeToString(sum[:]), Prefix: prefix, Permissions: req.Permissions, Status: "active", CreatedBy: currentID(c), CreatedAt: now}
 	res, _ := h.db.APIKeys().InsertOne(c.Request.Context(), key)
-	key.ID = res.InsertedID.(primitive.ObjectID)
+	key.ID = res.InsertedID.(bson.ObjectID)
 	c.JSON(http.StatusCreated, gin.H{"success": true, "message": "API key created", "data": key, "plainTextKey": raw})
 }
 
@@ -464,7 +463,7 @@ func (h *WebhookHandler) Create(c *gin.Context) {
 	item.CreatedAt = now
 	item.UpdatedAt = now
 	res, _ := h.db.Webhooks().InsertOne(c.Request.Context(), item)
-	item.ID = res.InsertedID.(primitive.ObjectID)
+	item.ID = res.InsertedID.(bson.ObjectID)
 	sendCreated(c, item, "Webhook created")
 }
 
@@ -507,8 +506,8 @@ func (h *UploadHandler) Create(c *gin.Context) {
 	now := time.Now()
 	asset := models.UploadAsset{FileName: req.FileName, ContentType: req.ContentType, Size: req.Size, URL: req.DataURL, Scope: req.Scope, OwnerID: currentID(c), CreatedAt: now}
 	res, _ := h.db.UploadAssets().InsertOne(c.Request.Context(), asset)
-	asset.ID = res.InsertedID.(primitive.ObjectID)
-	h.hub.Publish("upload:new", realtime.ChGeneral, asset)
+	asset.ID = res.InsertedID.(bson.ObjectID)
+	h.hub.Publish(realtime.EvtUploadNew, realtime.ChGeneral, asset)
 	sendCreated(c, asset, "Upload recorded")
 }
 
@@ -553,8 +552,8 @@ func (h *PrayerHandler) Create(c *gin.Context) {
 	item.CreatedAt = now
 	item.UpdatedAt = now
 	res, _ := h.db.PrayerRequests().InsertOne(c.Request.Context(), item)
-	item.ID = res.InsertedID.(primitive.ObjectID)
-	h.hub.Publish("prayer:new", realtime.ChPrayer, item)
+	item.ID = res.InsertedID.(bson.ObjectID)
+	h.hub.Publish(realtime.EvtPrayerNew, realtime.ChPrayer, item)
 	sendCreated(c, item, "Prayer request created")
 }
 
@@ -608,8 +607,8 @@ func (h *ChatHandler) Send(c *gin.Context) {
 		msg.Reactions = map[string][]string{}
 	}
 	res, _ := h.db.ChatMessages().InsertOne(c.Request.Context(), msg)
-	msg.ID = res.InsertedID.(primitive.ObjectID)
-	h.hub.Publish("chat:message", msg.ChannelID, msg)
+	msg.ID = res.InsertedID.(bson.ObjectID)
+	h.hub.Publish(realtime.EvtChatMessage, msg.ChannelID, msg)
 	sendCreated(c, msg, "Message sent")
 }
 

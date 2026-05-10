@@ -14,6 +14,7 @@
 //	# or build a ~10MB static binary:
 //	CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o choir-server ./cmd/server
 package main
+import "go.mongodb.org/mongo-driver/v2/bson"
 
 import (
 	"context"
@@ -37,7 +38,6 @@ import (
 	"github.com/inheritance-choir/backend/internal/workers"
 	"github.com/inheritance-choir/backend/pkg/crypto"
 	jwtpkg "github.com/inheritance-choir/backend/pkg/jwt"
-	"go.mongodb.org/mongo-driver/bson"
 )
 
 func main() {

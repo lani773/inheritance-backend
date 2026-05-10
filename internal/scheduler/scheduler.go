@@ -1,5 +1,6 @@
 // Package scheduler provides cron-based background job scheduling.
 package scheduler
+import "go.mongodb.org/mongo-driver/v2/bson"
 
 import (
 	"context"
@@ -8,8 +9,7 @@ import (
 	"time"
 
 	"github.com/robfig/cron/v3"
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.uber.org/zap"
 
 	"github.com/inheritance-choir/backend/internal/config"

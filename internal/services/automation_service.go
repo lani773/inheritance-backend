@@ -1,13 +1,13 @@
 // Package services — automation rule execution engine.
 // Reads all active rules from MongoDB and executes their configured actions.
 package services
+import "go.mongodb.org/mongo-driver/v2/bson"
 
 import (
 	"context"
 	"fmt"
 	"time"
 
-	"go.mongodb.org/mongo-driver/bson"
 	"go.uber.org/zap"
 
 	"github.com/inheritance-choir/backend/internal/models"

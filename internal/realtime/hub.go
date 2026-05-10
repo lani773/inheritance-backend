@@ -1,6 +1,7 @@
 // Package realtime — upgraded bi-directional WebSocket hub with channel/room support,
 // auto-reconnect heartbeat, presence tracking, and typed client message routing.
 package realtime
+import "go.mongodb.org/mongo-driver/v2/bson"
 
 import (
 	"encoding/json"
@@ -10,8 +11,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.uber.org/zap"
 
 	"github.com/inheritance-choir/backend/internal/repository"
@@ -258,7 +257,7 @@ func (h *Hub) HandleWebSocket(db *repository.DB, jwtMgr *jwtpkg.Manager) gin.Han
 
 		// Fetch member info for channel defaults
 		ctx := c.Request.Context()
-		oid, _ := primitive.ObjectIDFromHex(claims.MemberID)
+		oid, _ := bson.ObjectIDFromHex(claims.MemberID)
 		var member struct {
 			IsAdmin   bool   `bson:"isAdmin"`
 			VoicePart string `bson:"voicePart"`

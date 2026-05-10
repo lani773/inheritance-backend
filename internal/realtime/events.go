@@ -46,9 +46,13 @@ const (
 	EvtPostCreated = "post:created"
 	EvtPostLiked   = "post:liked"
 	EvtPostComment = "post:comment"
+	EvtPostUpdated = "post:updated"
+	EvtPostDeleted = "post:deleted"
 
 	// ── Songs / Setlists ──────────────────────────────────────────
 	EvtSongCreated     = "song:created"
+	EvtSongUpdated     = "song:updated"
+	EvtSongDeleted     = "song:deleted"
 	EvtSetlistUpdated  = "setlist:updated"
 	EvtSetlistDeleted  = "setlist:deleted"
 
