@@ -38,6 +38,7 @@ import (
 	"github.com/inheritance-choir/backend/pkg/crypto"
 	jwtpkg "github.com/inheritance-choir/backend/pkg/jwt"
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 func main() {
@@ -141,6 +142,7 @@ func main() {
 	log.Info("Goodbye 🎵")
 }
 
+// mustNot panics if an error is not nil.
 func mustNot(err error, label string) {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "FATAL [%s]: %v\n", label, err)
@@ -148,51 +150,50 @@ func mustNot(err error, label string) {
 	}
 }
 
+// seedAdmin creates or updates the default administrator account from .env configuration.
 func seedAdmin(db *repository.DB, cfg *config.Config, log *zap.Logger) {
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 
-	// Hash password from .env
-	hashed, err := crypto.HashPassword(cfg.AdminPassword)
+	hashedPassword, err := crypto.HashPassword(cfg.AdminPassword)
 	if err != nil {
-		log.Error("Failed to hash admin password", zap.Error(err))
+		log.Error("Failed to hash admin password during seeding", zap.Error(err))
 		return
 	}
 
-	// Check if admin already exists
-	var existing models.Member
-	err = db.Members().FindOne(ctx, bson.M{"email": cfg.AdminEmail}).Decode(&existing)
+	filter := bson.M{"email": cfg.AdminEmail}
+	update := bson.M{
+		"$set": bson.M{
+			"passwordHash": hashedPassword,
+			"updatedAt":    time.Now(),
+		},
+		"$setOnInsert": bson.M{
+			"fullName":   "System Administrator",
+			"email":      cfg.AdminEmail,
+			"role":       "president",
+			"isAdmin":    true,
+			"status":     "active",
+			"voicePart":  "Bass",
+			"joinDate":   time.Now(),
+			"createdAt":  time.Now(),
+		},
+	}
 
-	if err == nil {
-		// Admin exists, update password to match .env
-		_, err = db.Members().UpdateOne(ctx,
-			bson.M{"_id": existing.ID},
-			bson.M{"$set": bson.M{"passwordHash": hashed, "updatedAt": time.Now()}},
+	opts := options.Update().SetUpsert(true)
+	res, err := db.Members().UpdateOne(ctx, filter, update, opts)
+	if err != nil {
+		log.Error("Failed to seed default admin account",
+			zap.String("email", cfg.AdminEmail),
+			zap.Error(err),
 		)
-		if err != nil {
-			log.Error("Failed to update existing admin password", zap.Error(err))
-		} else {
-			log.Info("Existing admin account password updated from .env", zap.String("email", cfg.AdminEmail))
-		}
 		return
 	}
 
-	// Admin doesn't exist, create it
-	admin := models.Member{
-		FullName:     "System Administrator",
-		Email:        cfg.AdminEmail,
-		PasswordHash: hashed,
-		Role:         "president",
-		IsAdmin:      true,
-		Status:       "active",
-		JoinDate:     time.Now(),
-		CreatedAt:    time.Now(),
-		UpdatedAt:    time.Now(),
-	}
-
-	_, err = db.Members().InsertOne(ctx, admin)
-	if err != nil {
-		log.Error("Failed to seed default admin account", zap.Error(err))
+	if res.UpsertedID != nil {
+		log.Info("✅ Default admin account successfully seeded", zap.String("email", cfg.AdminEmail))
+	} else if res.ModifiedCount > 0 {
+		log.Info("✅ Existing admin account password updated from .env", zap.String("email", cfg.AdminEmail))
 	} else {
-		log.Info("Default admin account successfully seeded", zap.String("email", cfg.AdminEmail))
+		log.Info("Admin account already up-to-date", zap.String("email", cfg.AdminEmail))
 	}
 }

@@ -31,7 +31,9 @@ services:
     volumes: [mongo_data:/data/db]
     healthcheck:
       test: ["CMD","mongosh","--eval","db.adminCommand('ping')"]
-      interval: 10s; timeout: 5s; retries: 5
+      interval: 10s
+      timeout: 5s
+      retries: 5
     restart: unless-stopped
 
   # ── Redis ─────────────────────────────────────────────────

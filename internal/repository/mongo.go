@@ -175,7 +175,8 @@ func (d *DB) ensureIndexes(ctx context.Context) error {
 
 	for _, spec := range specs {
 		if _, err := spec.collection.Indexes().CreateMany(ctx, spec.indexes); err != nil {
-			d.log.Warn("index creation warning", zap.Error(err))
+			d.log.Error("failed to create indexes", zap.String("collection", spec.collection.Name()), zap.Error(err))
+			return fmt.Errorf("failed to create indexes for %s: %w", spec.collection.Name(), err)
 		}
 	}
 
