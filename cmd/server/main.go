@@ -28,7 +28,6 @@ import (
 
 	"github.com/inheritance-choir/backend/internal/api/v1/router"
 	"github.com/inheritance-choir/backend/internal/config"
-	"github.com/inheritance-choir/backend/internal/models"
 	"github.com/inheritance-choir/backend/internal/notifications"
 	"github.com/inheritance-choir/backend/internal/realtime"
 	"github.com/inheritance-choir/backend/internal/repository"
@@ -168,14 +167,14 @@ func seedAdmin(db *repository.DB, cfg *config.Config, log *zap.Logger) {
 			"updatedAt":    time.Now(),
 		},
 		"$setOnInsert": bson.M{
-			"fullName":   "System Administrator",
-			"email":      cfg.AdminEmail,
-			"role":       "president",
-			"isAdmin":    true,
-			"status":     "active",
-			"voicePart":  "Bass",
-			"joinDate":   time.Now(),
-			"createdAt":  time.Now(),
+			"fullName":  "System Administrator",
+			"email":     cfg.AdminEmail,
+			"role":      "president",
+			"isAdmin":   true,
+			"status":    "active",
+			"voicePart": "Bass",
+			"joinDate":  time.Now(),
+			"createdAt": time.Now(),
 		},
 	}
 

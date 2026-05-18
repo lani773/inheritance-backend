@@ -19,7 +19,10 @@ import (
 
 func main() {
 	cfg, err := config.Load()
-	if err != nil { fmt.Fprintln(os.Stderr, err); os.Exit(1) }
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
 
 	// Simple logger for seed
 	fmt.Println("🌱 Connecting to MongoDB…")
@@ -41,7 +44,7 @@ func main() {
 			Role: "president", Status: "active", IsAdmin: true,
 			Permissions: []string{"all"}, JoinDate: now, CreatedAt: now, UpdatedAt: now,
 		})
-		fmt.Printf("✅ Admin: %s / %s\n", adminEmail, cfg.AdminPassword)
+		fmt.Printf("✅ Admin: %s\n", adminEmail)
 	} else {
 		fmt.Printf("ℹ️  Admin already exists: %s\n", adminEmail)
 	}
@@ -49,13 +52,13 @@ func main() {
 	// ── Sample members ─────────────────────────────────────
 	sampleMembers := []struct{ Name, Email, Voice string }{
 		{"Marie Claire Uwimana", "marie@choir.rw", "Soprano"},
-		{"Diane Mukamana",        "diane@choir.rw",   "Alto"},
-		{"Jean-Paul Habimana",    "jean@choir.rw",    "Tenor"},
-		{"Emmanuel Ndayishimiye", "emma@choir.rw",    "Bass"},
-		{"Erica Ingabire",        "erica@choir.rw",   "Soprano"},
-		{"Solange Nkurunziza",    "solange@choir.rw", "Alto"},
-		{"Patrick Nzabahimana",   "pat@choir.rw",     "Tenor"},
-		{"Olivier Rukundo",       "olivier@choir.rw", "Bass"},
+		{"Diane Mukamana", "diane@choir.rw", "Alto"},
+		{"Jean-Paul Habimana", "jean@choir.rw", "Tenor"},
+		{"Emmanuel Ndayishimiye", "emma@choir.rw", "Bass"},
+		{"Erica Ingabire", "erica@choir.rw", "Soprano"},
+		{"Solange Nkurunziza", "solange@choir.rw", "Alto"},
+		{"Patrick Nzabahimana", "pat@choir.rw", "Tenor"},
+		{"Olivier Rukundo", "olivier@choir.rw", "Bass"},
 	}
 
 	hash, _ := bcrypt.GenerateFromPassword([]byte("Password123."), 12)
@@ -73,12 +76,16 @@ func main() {
 	}
 
 	// ── Sample events ──────────────────────────────────────
-	events := []struct{ Title, Type string; Days int; Mandatory bool }{
-		{"Weekly Rehearsal",     "rehearsal",   2,  true},
-		{"Sunday Service",       "service",     5,  true},
-		{"Directors Meeting",    "meeting",     7,  false},
-		{"Christmas Performance","performance", 30, true},
-		{"Voice Training",       "workshop",    14, false},
+	events := []struct {
+		Title, Type string
+		Days        int
+		Mandatory   bool
+	}{
+		{"Weekly Rehearsal", "rehearsal", 2, true},
+		{"Sunday Service", "service", 5, true},
+		{"Directors Meeting", "meeting", 7, false},
+		{"Christmas Performance", "performance", 30, true},
+		{"Voice Training", "workshop", 14, false},
 	}
 	for _, ev := range events {
 		c, _ := db.Collection("events").CountDocuments(ctx, bson.M{"title": ev.Title})
@@ -88,7 +95,7 @@ func main() {
 			db.Collection("events").InsertOne(ctx, models.Event{
 				Title: ev.Title, Type: ev.Type, Date: date,
 				Time: "09:00", EndTime: "11:00",
-				Location: "Kigali Main Church",
+				Location:  "Kigali Main Church",
 				Mandatory: ev.Mandatory, TargetVoices: []string{},
 				CreatedAt: now, UpdatedAt: now,
 			})
@@ -101,7 +108,7 @@ func main() {
 	if c == 0 {
 		db.Collection("appsettings").InsertOne(ctx, models.AppSettings{
 			Key: "global", ChoirName: "INHERITANCE CHOIR",
-			Tagline: "Voices united in worship and excellence",
+			Tagline:      "Voices united in worship and excellence",
 			ContactEmail: adminEmail, Currency: "RWF", Timezone: "Africa/Kigali",
 			AttendanceTarget: 80, TitheSuggestion: 10,
 			EmailNotifications: true, UpdatedAt: time.Now(),
@@ -110,6 +117,6 @@ func main() {
 	}
 
 	fmt.Println("\n🎉 Seed complete!")
-	fmt.Printf("   Admin:   %s / %s\n", adminEmail, cfg.AdminPassword)
+	fmt.Printf("   Admin:   %s\n", adminEmail)
 	fmt.Println("   Members: 8 sample members (Password123.)")
 }

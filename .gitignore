@@ -1,9 +1,6 @@
 bin/
 *.exe
 *.exe~
-*.dll
-*.so
-*.dylib
 .env
 *.log
 go.sum

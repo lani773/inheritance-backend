@@ -76,7 +76,6 @@ func Connect(cfg *config.Config, log *zap.Logger) (*DB, error) {
 	}
 
 	log.Info("✅ MongoDB connected",
-		zap.String("uri", cfg.MongoURI),
 		zap.String("db", cfg.MongoDB),
 	)
 	return db, nil
